@@ -1,0 +1,10 @@
+aws_region           = "us-west-2"
+dynamodb_table_name  = "feedback"
+dynamodb_hash_key    = "id"
+dynamodb_table_class = "STANDARD"
+dynamodb_billing_mode = "PROVISIONED"
+dynamodb_read_capacity = 5
+dynamodb_write_capacity = 5
+environment = "dev"
+project_name = "feedback-system"
+# owner = ""
