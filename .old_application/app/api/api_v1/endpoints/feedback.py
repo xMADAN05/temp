@@ -10,18 +10,18 @@ import logging
 from datetime import datetime
 from uuid import uuid4
 from http import HTTPStatus
-from typing import Annotated, Any, List, Optional, Dict
+from typing import Annotated, List, Optional
 from fastapi import APIRouter, Body, Header, Response, Request, HTTPException, status, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-
 from app.services.dynamodb_dao import FeedbackService
 from app.models.feedback_models import FeedbackServiceRequest, FeedbackServiceResponse, ErrorResponse
 from app.services.dynamodb_services import (
-    get_feedback,
     submit_feedback,
     get_feedback_by_id,
+    get_feedback_by_racfid,
+    get_feedback_by_application_id,
     delete_feedback_by_feedback_id,
     delete_feedback_by_application_id
 ) 
@@ -54,29 +54,6 @@ async def create_feedback(
     logger.info("Call to create feedback record.")
     return await submit_feedback(feedback)
 
-
-@router.get(
-    "/",
-    responses={
-        200: {"model": FeedbackServiceRequest, "description": "Success"},
-        401: {"model": ErrorResponse, "description": "Unauthorized"},
-        404: {"model": ErrorResponse, "description": "Not Found"},
-        500: {"model": ErrorResponse, "description": "Internal Server Error"},
-    },
-)
-async def read_feedback_with_filter(
-    filter: Optional[str] = Query(None, description= "JMESPath expression to filter records"),
-    limit: int = Query(20, ge=1, le=100, description= "Maximum number of records to return"),
-    next_token: Optional[str] = Query(None, description="Pagination token to retrieve next set of records")
-)-> Dict[str, Any]:
-    """Get feedback by ID"""
-    logger.info(
-        "Call to retrieve feedback record", 
-        extra={"filter": filter, "limit": limit, "next_token": next_token}
-    )
-    return await get_feedback(filter=filter, limit=limit, next_token=next_token)
-
-
 @router.get(
     "/{feedback_id}",
     responses={
@@ -94,6 +71,56 @@ async def read_feedback(feedback_id: str)->FeedbackServiceRequest:
     )
     return await get_feedback_by_id(feedback_id)
 
+router.get(
+    "/user/{racfid}",
+    responses={
+        200: {"model": List[FeedbackServiceRequest], "description": "Success"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Internal Server Error"},
+    },
+)
+async def read_user_feedback(racfid: str)->List[FeedbackServiceRequest]:
+    """Get all feedback submitted by a specific RACFID"""
+    logger.info(
+        "Call to retrieve user feedback records", 
+        extra={"racfid": racfid}
+    )
+    return await get_feedback_by_racfid(racfid)
+
+@router.get(
+    "/application/{application_id}",
+    responses={
+        200: {"model": List[FeedbackServiceRequest], "description": "Success"},
+        401: {"model": ErrorResponse, "description": "Unauthorized"},
+        500: {"model": ErrorResponse, "description": "Internal Server Error"},
+    },
+)
+async def read_application_feedback(application_id: str)->List[FeedbackServiceRequest]:
+    """Get all feedback for a specific application"""
+    logger.info(
+        "Call to retrieve application feedback records", 
+        extra={"application_id": application_id}
+    )
+    return await get_feedback_by_application_id(application_id)
+
+# @router.get("/data/", response_model=List[FeedbackServiceRequest])
+# async def read_comprehensive_feedback(
+#     start_datetime: Optional[datetime] = Query(None, description="Start datetime for filtering"),
+#     end_datetime: Optional[datetime] = Query(None, description="End datetime for filtering"),
+#     # Other optional filter parameters
+#     racfid: Optional[str] = Query(None),
+#     application_id: Optional[str] = Query(None)
+# ):
+#     """
+#     Retrieve feedback with filtering options.
+#     Supports filtering by datetime range and other parameters.
+#     """
+#     return await get_comprehensive_feedback(
+#         start_datetime,
+#         end_datetime,
+#         racfid,
+#         application_id
+#         )
 
 @router.delete(
     "/{feedback_id}", 

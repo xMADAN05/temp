@@ -21,8 +21,6 @@ import json
 import uuid
 import datetime
 import logging
-import jmespath
-import jmespath.exceptions
 import boto3.dynamodb
 import boto3.dynamodb.conditions
 from typing import List, Dict, Any, Optional
@@ -68,25 +66,7 @@ class FeedbackService:
             guardrail_failure_type=item.get('guardrail_failure_type', None),
             context=json.loads(item.get('context', '{}'))
         )
-    
-    def search_feedback(self)-> List[Dict[str, Any]]:
-        try:
-            response = self.table.scan()
-            items = response.get('Items',[])
 
-            while 'LastEvaluatedKey' in response:
-                response= self.table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
-                items.extend(response.get('Items',[]))
-            
-            context_serialized_items = []
-            for item in items:
-                if 'context' in item:
-                    item['context'] = json.loads(item.get('context','{}')) or {}
-                context_serialized_items.append(item)
-            return context_serialized_items
-        except Exception as e:
-            logger.exception(f"Error retrieving all feedback records: {str(e)}")
-            raise HTTPException(status_code=500, detail="Internal server error while searching feedback")
 
     async def submit_feedback(self, feedback: FeedbackServiceRequest) -> FeedbackServiceResponse:
             id = str(uuid.uuid4())
@@ -135,45 +115,39 @@ class FeedbackService:
             print(f"Error retrieving feedback: {str(e)}")
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
         
-
-    async def get_feedback_with_filter(
-                self, 
-                filter: Optional[str], 
-                limit: int,
-                next_token: Optional[str],
-            ) -> Dict[str, Any]:
-
+    
+    async def get_feedback_by_rafcid(self, racfid: str) -> List[FeedbackServiceRequest]:
         try:
-            all_records = self.search_feedback()
+            response = self.table.query(
+                KeyConditionExpression=boto3.dynamodb.conditions.Key('racfid').eq(racfid)
+            )
 
-            if filter:
-                try:
-                    filtered_records = jmespath.search(filter, all_records)
-                    if not isinstance(filtered_records, list):
-                        filtered_records = [filtered_records] if filtered_records else []
-                except jmespath.exceptions.JMESPathError as e:
-                    raise HTTPException(
-                            status_code=400,
-                            detail=f"Invalid JMESPath filter: {str(e)}"
-                    )
-            else:
-                filtered_records = all_records
-
-            start_index =  int(next_token) if next_token else 0
-            end_index = start_index + limit
-            result_chunk = filtered_records[start_index:end_index]
-
-            new_next_token = str(end_index) if end_index <len(filtered_records) else None
-            return {
-            "items": result_chunk,
-            "next_token":new_next_token,
-            }
-        except HTTPException:
-                raise
-        except Exception as e:
-                logger.exception(f"Error retrieving feedback by racfid {str(e)}")
-                raise HTTPException(status_code=500, detail="Internal server error")  
+            if 'Items' not in response or not response['Items']:
+                raise HTTPException(status_code=404, detail=f"No feedback found for racfid: {racfid}")
+            
+            return [self._item_to_feedback(item) for item in response['Items']]
         
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.exception(f"Error retrieving feedback by racfid {str(e)}")
+            raise HTTPException(status_code=500, detail="Internal server error")
+
+
+    async def get_feedback_by_application_id(self, application_id: str) -> List[FeedbackServiceRequest]:
+        try:
+            response = self.table.scan(
+                FilterExpression=Attr("application_id").eq(application_id)
+            )
+
+            if not response.get('Items'):
+                raise HTTPException(status_code=404, detail=f"No feedback found for Application ID: {application_id}")
+            
+            return [self._item_to_feedback(item) for item in response['Items']]
+        
+        except Exception as e:
+            logger.exception(f"Error retrieving feedback by Application ID {str(e)}")
+            raise HTTPException(status_code=500, detail="Internal server error")
     
     async def delete_feedback_by_id(self, feedback_id: str) -> FeedbackServiceResponse:
         try:

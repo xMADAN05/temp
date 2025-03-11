@@ -1,0 +1,352 @@
+openapi: 3.0.0
+info:
+  title: "Feedback API"
+  description: |
+    Provides the required capabilities to provide inference observability.
+  version: "0.0.1"
+
+servers:
+- url: ""
+  description: ""
+
+tags:
+- name: feedback
+  description: Observability operations related to feedback
+
+paths:
+  /v1/observability/feedback:
+    post:
+      operationId: createObservabilityFeedback
+      summary: Records new feedback to dynamodb
+      description: Records new feedback to dynamodb
+      tags:
+        - feedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Feedback'
+      responses:
+        '201':
+          description: Successfully created feedback
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackCreationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/observability/feedback/{feedbackId}:   
+    get:
+      operationId: getObservabilityFeedback
+      summary: Get a recorded feedback
+      description: Retrieve a specific feedback record by its unique identifier
+      tags:
+        - feedback
+      parameters:
+      - name: feedbackId
+        in: path
+        required: true
+        description: "The feedback record uuid"
+        schema:
+          type: string
+          format: uuid
+          example: "1309860b-eb8d-4da6-b279-68a4d7c49f7b"
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FeedbackEntity'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+                    
+    delete:
+      operationId: deleteObservabilityFeedback
+      summary: Delete a recorded feedback
+      description: Delete a recorded feedback by its unique identifier
+      tags:
+        - feedback
+      parameters:
+      - name: feedbackId
+        in: path
+        required: true
+        description: "The feedback record uuid"
+        schema:
+          type: string
+          format: uuid
+          example: "1309860b-eb8d-4da6-b279-68a4d7c49f7b"
+      responses:
+        '204':
+          description: Successfully deleted feedback. No content returned.
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/observability/feedback/user/{racfid}:
+    get:
+      operationId: getObservabilityUserFeedback
+      summary: Get feedback records by User's RACFID 
+      description: Retrieve all feedback records associated with a specific user's RACFID
+      tags:
+        - feedback
+      parameters:
+      - name: racfid
+        in: path
+        required: true
+        description: "A unique identifier for the user."
+        schema:
+          type: string
+          minLength: 7
+          maxLength: 7
+          pattern: '^[A-Z]\d{6}$'
+          example: "A123456"
+      responses:
+        '200':
+          description: Successfully retrieved user feedback records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FeedbackEntity'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/observability/feedback/application/{applicationId}:
+    get:
+      operationId: getObservabilityApplicationFeedback
+      summary: Get feedback records by ApplicationId 
+      description: Retrieve all feedback records associated with a specific application
+      tags:
+        - feedback
+      parameters:
+      - name: applicationId
+        in: path
+        required: true
+        description: "A unique identifier for the application."
+        schema:
+          type: string
+          format: uuid
+          example: "1309860b-eb8d-4da6-b279-68a4d7c49f7b"
+      responses:
+        '200':
+          description: Successfully retrieved application feedback records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FeedbackEntity'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+security:
+- ApiKeyAuth: []
+- OAuth2:
+  - read
+  - write
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      description: "API Key Authentication"
+      in: header
+      name: X-API-Key
+
+    OAuth2:
+      type: oauth2
+      description: "OAuth 2.0 Authorization Code Flow"
+      flows:
+        authorizationCode:
+          authorizationUrl: https://example.com/oauth/authorize
+          tokenUrl: https://example.com/oauth/token
+          scopes:
+            read: Grants read access
+            write: Grants write access
+            admin: Grants access to admin operations
+
+  schemas:
+    Feedback:
+      type: object
+      description: Schema for submitting feedback
+      properties:
+        application_id:
+          type: string
+          format: uuid
+          description: "The ID of the application the document analysis request was for"
+          example: "1309860b-eb8d-4da6-b279-68a4d7c49f7b"
+        inference_id:
+          type: string
+          description: "Unique identifier for the specific AI inference"
+          minLength: 4
+          maxLength: 255
+          example: "inf_123456789abcdef"
+        racfid:
+          type: string
+          description: "User identifier (RACF ID) submitting the feedback"
+          minLength: 7
+          maxLength: 7
+          pattern: '^[A-Z]\d{6}$'
+          example: "A123456"
+        timestamp:
+          type: integer
+          description: "Unix timestamp of when the feedback was submitted"
+        feedback_relevance:
+          type: string
+          description: "Binary indicator of feedback relevance"
+          enum: ['0', '1']
+          nullable: true
+          example: "1"
+        feedback_type:
+          type: string
+          description: "Categorization of feedback type"
+          enum:
+            - "guardrail_failure"
+            - "performance_issue"
+            - "usability"
+          nullable: true
+          example: "guardrail_failure"
+        guardrail_failure_type:
+          type: string
+          description: "The type of guardrail violation"
+          enum:
+            - "profanity"
+            - "bias"
+            - "hallucination"
+            - "inappropriate_content"
+          nullable: true
+          example: "hallucination"
+        context:
+          type: object
+          description: "Flexible dictionary to capture additional contextual information"
+          maxProperties: 10
+          additionalProperties: true
+          properties:
+            user_role:
+              type: string
+            interaction_length:
+              type: number
+            model_version:
+              type: string
+          example:
+            user_role: "researcher"
+            interaction_length: 5
+            model_version: "3.5"
+      required:
+        - application_id
+        - inference_id
+        - racfid
+
+    FeedbackEntity:
+      allOf:
+        - $ref: '#/components/schemas/Feedback'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: "Unique identifier for the feedback record"
+      description: Feedback entity with system-generated identifier
+
+    FeedbackCreationResponse:
+      type: object
+      description: "Response for successful feedback creation"
+      properties:
+        status:
+          type: string
+          enum: ["Created"]
+          description: "Indicates successful creation of feedback"
+        feedback_id:
+          type: string
+          format: uuid
+          description: "Unique identifier for the created feedback record"
+          example: "1309860b-eb8d-4da6-b279-68a4d7c49f7b"
+        timestamp:
+          type: string
+          format: date-time
+          description: "Timestamp of feedback creation"
+          example: "2024-03-05T12:34:56.789Z"
+      required:
+        - status
+        - feedback_id
+        - timestamp
+
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum: ["BAD_REQUEST"]
+                  message:
+                    type: string
+                    description: "Detailed error message"
+                required:
+                  - code
+                  - message
+            required:
+              - error
+
+    NotFound:
+      description: Resource Not Found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum: ["NOT_FOUND"]
+                  message:
+                    type: string
+                    description: "Detailed error message"
+                required:
+                  - code
+                  - message
+            required:
+              - error
+
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                properties:
+                  code:
+                    type: string
+                    enum: ["INTERNAL_SERVER_ERROR"]
+                  message:
+                    type: string
+                    description: "Detailed error message"
+                required:
+                  - code
+                  - message
+            required:
+              - error
